@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Print Barcode</title>
+    <script src="JsBarcode.js"></script>
+    <style>
+      @page {
+        size: 58mm 15mm;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* ── Screen preview styles ── */
+      @media screen {
+        html,
+        body {
+          width: 100vw;
+          height: 100vh;
+          background: #d0d0d0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          font-family: sans-serif;
+        }
+        .label-wrap {
+          background: #fff;
+          border: 1px solid #aaa;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+          border-radius: 4px;
+          padding: 12px 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        svg#barcode {
+          display: block;
+          width: 400px;
+          height: 120px;
+        }
+        .hint {
+          margin-top: 14px;
+          color: #444;
+          font-size: 13px;
+        }
+      }
+
+      /* ── Print styles ── */
+      @media print {
+        html,
+        body {
+          width: 58mm;
+          height: 15mm;
+          background: #fff;
+          overflow: hidden;
+        }
+        .label-wrap {
+          display: contents;
+        }
+        .hint {
+          display: none;
+        }
+        svg#barcode {
+          display: block;
+          width: 54mm !important;
+          height: 11mm !important;
+          margin: 2mm;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="label-wrap">
+      <svg id="barcode"></svg>
+    </div>
+    <p class="hint">
+      Preview — use Ctrl+P or the Print button in the dialog to print.
+    </p>
+    <script>
+      window.renderBarcode = function (value) {
+        JsBarcode("#barcode", value, {
+          format: "EAN13",
+          width: 2,
+          height: 60,
+          displayValue: false,
+          margin: 0,
+          lineColor: "#000000",
+          background: "#ffffff",
+        });
+        // Set screen-friendly pixel attrs; @media print CSS overrides to mm.
+        var svg = document.getElementById("barcode");
+        svg.setAttribute("width", "400px");
+        svg.setAttribute("height", "120px");
+        svg.setAttribute("preserveAspectRatio", "none");
+        return svg.outerHTML.length;
+      };
+    </script>
+  </body>
+</html>

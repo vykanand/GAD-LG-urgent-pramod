@@ -1,0 +1,28 @@
+{
+  "fields": [
+    {
+      "id": "field_0",
+      "label": "Manual code",
+      "header": "Manual code",
+      "headerCol": "A"
+    },
+    {
+      "id": "field_1",
+      "label": "Part Code",
+      "header": "Part Code",
+      "headerCol": "B"
+    }
+  ],
+  "primaryFields": [
+    "field_0"
+  ],
+  "scanOperation": "equals",
+  "displayField": "field_0",
+  "displayFields": [
+    "field_0",
+    "field_1"
+  ],
+  "removedHeaders": [],
+  "showMultiScanPanel": true,
+  "groupingFields": []
+}

@@ -1,0 +1,9 @@
+[
+  "AAPPA",
+  "AGDKA",
+  "OVCMA",
+  "ADOSFI",
+  "ATYUI",
+  "APSO",
+  "AKSLI"
+]

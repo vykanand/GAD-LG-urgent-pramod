@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="script-src 'self' 'unsafe-inline';"
+    />
+    <title>Barcode Print Test</title>
+    <script src="JsBarcode.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        background: #f0f0f0;
+        gap: 20px;
+      }
+      h2 {
+        margin: 0;
+        color: #333;
+      }
+      #barcode-value {
+        font-size: 22px;
+        font-weight: bold;
+        letter-spacing: 2px;
+        color: #111;
+      }
+      canvas#preview {
+        border: 1px solid #ccc;
+        background: #fff;
+        padding: 8px;
+        border-radius: 4px;
+      }
+      .buttons {
+        display: flex;
+        gap: 12px;
+      }
+      button {
+        padding: 12px 28px;
+        font-size: 15px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #btn-print {
+        background: #1a7f37;
+        color: #fff;
+      }
+      #btn-new {
+        background: #0066cc;
+        color: #fff;
+      }
+      #btn-print:disabled {
+        background: #999;
+        cursor: not-allowed;
+      }
+      #status {
+        font-size: 13px;
+        color: #555;
+        min-height: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Barcode Print Test</h2>
+    <div id="barcode-value">—</div>
+    <canvas id="preview"></canvas>
+    <div class="buttons">
+      <button id="btn-new" onclick="newBarcode()">New Random Barcode</button>
+      <button id="btn-print" onclick="printBarcode()">Print</button>
+    </div>
+    <div id="status"></div>
+
+    <script>
+      const { ipcRenderer } = require("electron");
+
+      let currentBarcode = "";
+
+      // Generate a valid random EAN-13 (12 random digits + check digit)
+      function randomEAN13() {
+        const digits = Array.from({ length: 12 }, () =>
+          Math.floor(Math.random() * 10),
+        );
+        let sum = 0;
+        digits.forEach((d, i) => {
+          sum += i % 2 === 0 ? d : d * 3;
+        });
+        const check = (10 - (sum % 10)) % 10;
+        return digits.join("") + check;
+      }
+
+      function newBarcode() {
+        currentBarcode = randomEAN13();
+        document.getElementById("barcode-value").textContent = currentBarcode;
+
+        const canvas = document.getElementById("preview");
+        try {
+          JsBarcode(canvas, currentBarcode, {
+            format: "EAN13",
+            width: 2,
+            height: 80,
+            displayValue: true,
+            margin: 10,
+            lineColor: "#000",
+            background: "#fff",
+          });
+          setStatus("Ready to print: " + currentBarcode);
+        } catch (e) {
+          setStatus("Error rendering barcode: " + e.message);
+        }
+      }
+
+      async function printBarcode() {
+        if (!currentBarcode) {
+          setStatus("Generate a barcode first.");
+          return;
+        }
+
+        const btn = document.getElementById("btn-print");
+        btn.disabled = true;
+        setStatus("Generating PDF…");
+
+        try {
+          // Render at high resolution so the printed barcode is crisp.
+          // width:4 means each bar is 4px wide; height:120 gives a tall canvas.
+          // The main process stretches this to fill 58mm x 15mm on the label.
+          const canvas = document.createElement("canvas");
+          JsBarcode(canvas, currentBarcode, {
+            format: "EAN13",
+            width: 4,
+            height: 120,
+            displayValue: false,
+            margin: 0,
+            lineColor: "#000000",
+            background: "#ffffff",
+          });
+          const dataUrl = canvas.toDataURL("image/png");
+
+          const result = await ipcRenderer.invoke("print-barcode", {
+            barcode: currentBarcode,
+            dataUrl: dataUrl,
+          });
+
+          if (result.success) {
+            setStatus("PDF opened in viewer — print from there.");
+          } else {
+            setStatus("Print failed: " + (result.error || "unknown error"));
+          }
+        } catch (e) {
+          setStatus("Error: " + e.message);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      function setStatus(msg) {
+        document.getElementById("status").textContent = msg;
+      }
+
+      // Auto-generate one on load
+      newBarcode();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "fields": [],
+  "primaryFields": [],
+  "scanOperation": "equals",
+  "displayField": "",
+  "displayFields": [],
+  "removedHeaders": [
+    {
+      "name": "Manual code",
+      "col": "A",
+      "norm": "Manual code"
+    },
+    {
+      "name": "Part Code",
+      "col": "B",
+      "norm": "Part Code"
+    }
+  ],
+  "showMultiScanPanel": true,
+  "groupingFields": []
+}
