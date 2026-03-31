@@ -2868,8 +2868,8 @@
                 if (ssv) { ssv.textContent = "NOT OK"; ssv.classList.remove("ok"); }
                 // error sound
                 try { const snd = document.getElementById("error-sound"); if (snd) { snd.currentTime = 0; snd.play(); } } catch (e) {}
-                // save to error log
-                if (typeof window.saveErrorScanLogRealtime === "function") {
+                // save failed scan to the same daily history file with Status: FAIL
+                if (typeof window.saveScanLogRealtime === "function") {
                   try {
                     const errEntry = {
                       timestamp: new Date(),
@@ -2888,8 +2888,8 @@
                       errEntry["Mfg Date"]  = failDecoded.dateDisplay || "";
                       errEntry["LG Serial"] = failDecoded.serial || "";
                     }
-                    await window.saveErrorScanLogRealtime(errEntry);
-                  } catch (e) { console.error("[LG] error save failed:", e); }
+                    await window.saveScanLogRealtime(errEntry);
+                  } catch (e) { console.error("[LG] fail save failed:", e); }
                 }
               };
 
