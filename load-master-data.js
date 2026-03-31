@@ -218,7 +218,10 @@ window.loadMasterDataExternal = async function loadMasterDataExternal(forceReloa
 
     reconcileFieldMappings();
 
-    if (!settings.fields || settings.fields.length === 0) {
+    // Only auto-populate `settings.fields` when it is not defined (undefined or null).
+    // If `settings.fields` exists as an empty array, assume the user intentionally cleared fields
+    // and respect that choice (do not auto-populate or overwrite their settings).
+    if (typeof settings.fields === "undefined" || settings.fields === null) {
       settings.fields = (headerInfos || []).map((h, i) => ({ id: `field_${i}`, label: h.name || h.col || `Col ${h.col}`, header: h.name || "", headerCol: h.col || "" }));
       settings.primaryFields = settings.fields.length ? [settings.fields[0].id] : [];
       settings.displayFields = settings.fields.length > 1 ? [settings.fields[0].id, settings.fields[1].id] : settings.fields.map((f) => f.id);

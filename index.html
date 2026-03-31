@@ -2352,6 +2352,12 @@
           );
 
           console.log("Settings loaded:", settings);
+          // Expose a small on-page debug indicator showing loaded fields (helps identify which settings file was read)
+          try {
+            const dbg = document.getElementById("settings-debug");
+            if (dbg)
+              dbg.textContent = `fields: ${JSON.stringify(settings.fields || [])}`;
+          } catch (e) {}
           // Apply persisted UI controls immediately so visibility is consistent across restarts
           try {
             const chk = document.getElementById("show-multi-scan-panel");
@@ -2692,6 +2698,43 @@
             logEntry && logEntry["Status"] !== undefined
               ? logEntry["Status"]
               : logEntry.matchStatus || "";
+
+          // Ensure scanned code column is saved explicitly for error logs
+          try {
+            logToSave["Scanned Code"] =
+              logEntry.scannedCode ||
+              logEntry["Scanned Code"] ||
+              genValErr ||
+              "";
+          } catch (e) {
+            logToSave["Scanned Code"] = genValErr || "";
+          }
+
+          // Build a human-readable barcode breakdown for error logs
+          try {
+            let breakdownStrErr = "";
+            if (
+              Array.isArray(logEntry.breakdownFields) &&
+              logEntry.breakdownFields.length
+            ) {
+              breakdownStrErr = logEntry.breakdownFields
+                .map((f) => `${f.label || f.id}: ${f.value || ""}`)
+                .join(" | ");
+            } else {
+              const partsErr = [];
+              (settings.fields || []).forEach((f) => {
+                try {
+                  const el = document.getElementById(f.id);
+                  const v = el ? el.value || "" : "";
+                  partsErr.push(`${f.label || f.id}: ${v}`);
+                } catch (e) {}
+              });
+              breakdownStrErr = partsErr.join(" | ");
+            }
+            logToSave["Barcode Breakdown"] = breakdownStrErr;
+          } catch (e) {
+            logToSave["Barcode Breakdown"] = "";
+          }
 
           console.log("Saving error log entry to Excel:", logToSave);
 
@@ -6065,20 +6108,32 @@
             // Load today's scan logs from file
             const todaysLogs = await loadTodaysScanLogs();
 
-            // Build dynamic column list using configured fields and include scan-by
+            // Build dynamic column list. Prefer configured fields; if none,
+            // derive column names from the saved log's raw keys so History shows
+            // the actual persisted column names.
             const configuredHeaders = (settings.fields || []).map(
               (f) => f.header || f.label || f.id,
             );
-            let columns = [
-              "Date",
-              "Time",
-              ...configuredHeaders,
+            let columns = ["Date", "Time"];
+            if (configuredHeaders && configuredHeaders.length > 0) {
+              columns = columns.concat(configuredHeaders);
+            } else if (Array.isArray(todaysLogs) && todaysLogs.length > 0) {
+              // Derive keys from the first saved log row (preserve order)
+              const rawKeys = Object.keys(todaysLogs[0].raw || {});
+              // Exclude Date/Time since we already include them
+              const filtered = rawKeys.filter(
+                (k) => k !== "Date" && k !== "Time",
+              );
+              columns = columns.concat(filtered);
+            }
+            // Always include common trailing columns (deduped below)
+            columns = columns.concat([
               "scan-by",
               "Generated code 1",
               "Generated code 2",
               "Scanner",
               "Status",
-            ];
+            ]);
             // Deduplicate while preserving order
             const seenCols = new Set();
             columns = columns.filter((c) => {
@@ -6087,7 +6142,9 @@
               return true;
             });
 
-            const headerHtml = columns.map((c) => `<th>${c}</th>`).join("");
+            const headerHtml = columns
+              .map((c) => `<th>${escapeHtml(String(c || ""))}</th>`)
+              .join("");
 
             const rowsHtml = todaysLogs
               .map((log) => {
