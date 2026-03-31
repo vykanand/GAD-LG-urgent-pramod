@@ -2460,13 +2460,10 @@
               logData[displayHeader] || logData["Part Code"] || "";
             const partName = logData["Part Name"] || "";
             const customer = logData["Customer"] || "";
-            const generated1 =
-              logData["Generated code 1"] || logData["Scanned Code"] || "";
-            const generated2 =
-              logData["Generated code 2"] ||
+            const scannedCode =
               logData["Scanned Code"] ||
-              generated1 ||
-              "";
+              logData["LG Barcode"] ||
+              logData["Generated code 1"] || "";
             const scannerInfo = logData["scan-by"] || logData["Scanner"] || "";
             const matchStatus = logData["Status"] || "UNKNOWN";
 
@@ -2475,8 +2472,7 @@
               partCode,
               partName,
               customer,
-              generated1,
-              generated2,
+              scannedCode,
               scannerInfo,
               matchStatus,
               raw: logData,
@@ -2570,16 +2566,9 @@
               logToSave[col] = logEntry[col];
           });
 
-          // Add legacy/common columns (prefer explicit keys on logEntry if present)
-          // Save under new headers: Generated code 1 and Generated code 2 (duplicate)
-          const genVal =
-            (logEntry &&
-              (logEntry["Generated code 1"] || logEntry["Scanned Code"])) ||
-            logEntry.scannedCode ||
-            "";
-          logToSave["Generated code 1"] = genVal;
-          logToSave["Generated code 2"] =
-            (logEntry && logEntry["Generated code 2"]) || genVal;
+          // Common columns
+          logToSave["Scanned Code"] =
+            logEntry.scannedCode || logEntry["Scanned Code"] || logEntry["LG Barcode"] || "";
           logToSave["Scanner"] =
             logEntry && logEntry["Scanner"] !== undefined
               ? logEntry["Scanner"]
@@ -2588,14 +2577,6 @@
             logEntry && logEntry["Status"] !== undefined
               ? logEntry["Status"]
               : logEntry.matchStatus || "";
-
-          // Ensure scanned code column is saved explicitly
-          try {
-            logToSave["Scanned Code"] =
-              logEntry.scannedCode || logEntry["Scanned Code"] || genVal || "";
-          } catch (e) {
-            logToSave["Scanned Code"] = genVal || "";
-          }
 
           // Build a human-readable barcode breakdown string if provided or derive from current fields
           try {
@@ -2698,16 +2679,9 @@
             logToSave["scan-by"] = logEntry.scannerInfo || "";
           }
 
-          // Add generated code columns (duplicate value) and legacy/common columns
-          const genValErr =
-            (logEntry &&
-              (logEntry["Generated code 1"] || logEntry["Scanned Code"])) ||
-            logEntry.scannedCode ||
-            "";
-          logToSave["Generated code 1"] = genValErr;
-          logToSave["Generated code 2"] =
-            (logEntry && logEntry["Generated code 2"]) || genValErr;
-
+          // Common columns
+          logToSave["Scanned Code"] =
+            logEntry.scannedCode || logEntry["Scanned Code"] || logEntry["LG Barcode"] || "";
           logToSave["Scanner"] =
             logEntry && logEntry["Scanner"] !== undefined
               ? logEntry["Scanner"]
@@ -2716,17 +2690,6 @@
             logEntry && logEntry["Status"] !== undefined
               ? logEntry["Status"]
               : logEntry.matchStatus || "";
-
-          // Ensure scanned code column is saved explicitly for error logs
-          try {
-            logToSave["Scanned Code"] =
-              logEntry.scannedCode ||
-              logEntry["Scanned Code"] ||
-              genValErr ||
-              "";
-          } catch (e) {
-            logToSave["Scanned Code"] = genValErr || "";
-          }
 
           // Build a human-readable barcode breakdown for error logs
           try {
@@ -2805,17 +2768,10 @@
               log.scannerInfo ||
               "";
 
-            // Legacy/common columns (use new Generated code headers)
-            row["Generated code 1"] =
-              log.generated1 ||
+            // Scanned Code column (single authoritative column)
+            row["Scanned Code"] =
               log.scannedCode ||
-              (log.raw && log.raw["Generated code 1"]) ||
-              "";
-            row["Generated code 2"] =
-              log.generated2 ||
-              log.scannedCode ||
-              (log.raw && log.raw["Generated code 2"]) ||
-              row["Generated code 1"] ||
+              (log.raw && (log.raw["Scanned Code"] || log.raw["LG Barcode"] || log.raw["Generated code 1"])) ||
               "";
             row["Scanner"] = log.scannerInfo;
             row["Status"] = log.matchStatus;
@@ -6089,30 +6045,31 @@
             const configuredHeaders = (settings.fields || []).map(
               (f) => f.header || f.label || f.id,
             );
-            let columns = ["Date", "Time"];
-            if (configuredHeaders && configuredHeaders.length > 0) {
-              columns = columns.concat(configuredHeaders);
-            } else if (Array.isArray(todaysLogs) && todaysLogs.length > 0) {
-              // Derive keys from the first saved log row (preserve order)
-              const rawKeys = Object.keys(todaysLogs[0].raw || {});
-              // Exclude Date/Time since we already include them
-              const filtered = rawKeys.filter(
-                (k) => k !== "Date" && k !== "Time",
-              );
-              columns = columns.concat(filtered);
-            }
-            // Always include LG-specific and common trailing columns (deduped below)
-            columns = columns.concat([
-              "LG Barcode",
+            // Columns to always exclude (legacy / replaced)
+            const _excludeCols = new Set(["Date","Time","Generated code 1","Generated code 2"]);
+
+            // Fixed logical column order for LG scan history
+            let columns = [
+              "Date", "Time",
+              "Scanned Code",
               "Part Code",
               "Nation",
               "Supplier",
               "Mfg Date",
               "LG Serial",
               "scan-by",
-              "Scanned Code",
               "Status",
-            ]);
+              "Barcode Breakdown",
+            ];
+
+            // If any configured settings fields aren't already in the list, insert after Time
+            if (configuredHeaders && configuredHeaders.length > 0) {
+              configuredHeaders.forEach((h) => {
+                if (!columns.includes(h) && !_excludeCols.has(h)) {
+                  columns.splice(2, 0, h); // insert before Scanned Code
+                }
+              });
+            }
             // Deduplicate while preserving order
             const seenCols = new Set();
             columns = columns.filter((c) => {
@@ -6147,10 +6104,8 @@
                         return `<td>${escapeHtml(String(log[col]))}</td>`;
 
                       // Known aliases / legacy keys
-                      if (col === "Generated code 1")
-                        return `<td>${escapeHtml(log.generated1 || raw["Generated code 1"] || raw["Scanned Code"] || "")}</td>`;
-                      if (col === "Generated code 2")
-                        return `<td>${escapeHtml(log.generated2 || raw["Generated code 2"] || raw["Scanned Code"] || "")}</td>`;
+                      if (col === "Scanned Code")
+                        return `<td>${escapeHtml(log.scannedCode || raw["Scanned Code"] || raw["LG Barcode"] || raw["Generated code 1"] || "")}</td>`;
                       if (col === "Scanner")
                         return `<td>${escapeHtml(log.scannerInfo || raw["Scanner"] || raw["scan-by"] || "")}</td>`;
                       if (col === "Status")
