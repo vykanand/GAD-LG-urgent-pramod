@@ -247,6 +247,7 @@
       '</div>';
 
     el.className = 'lg-panel-ok';
+    el.style.display = '';
     el.innerHTML =
       '<div class="lg-ph">' +
         '<span class="lg-ph-icon">&#10004;</span> LG BARCODE — PASS' +
@@ -256,9 +257,8 @@
       '<div class="lg-bk-full">' + decoded.raw + '</div>' +
       '<div class="lg-pb">' + detailRows + '</div>';
 
-    el.style.display = 'block';
     clearTimeout(_hideTimer);
-    _hideTimer = setTimeout(hidePanel, 12000);
+    _hideTimer = null; // static panel — no auto-hide on success
   }
 
   /** Detail row: code char (coloured badge) → decoded value */
@@ -276,20 +276,19 @@
     if (!el) return;
 
     el.className = 'lg-panel-err';
+    el.style.display = '';
     el.innerHTML =
       '<div class="lg-ph lg-ph-err">' +
         '<span>&#9888;</span> LG Barcode Error' +
-        '<button class="lg-close" onclick="window.LGBarcodeLogic.hidePanel()">&#x2715;</button>' +
       '</div>' +
       '<div class="lg-pb"><div class="lg-errmsg">' + message + '</div></div>';
-    el.style.display = 'block';
     clearTimeout(_hideTimer);
-    _hideTimer = setTimeout(hidePanel, 10000);
+    _hideTimer = null; // static panel — stays visible until next scan
   }
 
   function hidePanel() {
     const el = _getPanel();
-    if (el) el.style.display = 'none';
+    if (el) { el.className = 'lg-panel-blank'; el.innerHTML = ''; el.style.display = ''; }
   }
 
   function _row(label, value) {

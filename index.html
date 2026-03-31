@@ -215,7 +215,9 @@
         margin-top: 20px;
         flex: 1;
         gap: 20px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;   /* keep columns side-by-side at all times */
+        min-height: 0;       /* allow flex children to shrink past content height */
+        align-items: stretch;
       }
 
       .input-section {
@@ -224,6 +226,8 @@
         padding: 20px;
         flex: 2;
         min-width: 300px;
+        min-height: 0;       /* allow column to shrink */
+        overflow-y: auto;    /* scroll when lg-decode-panel + verify rows exceed height */
         display: flex;
         flex-direction: column;
       }
@@ -266,7 +270,8 @@
         margin-top: 20px;
         display: flex;
         flex-direction: column;
-        height: calc(100% - 40px); /* Adjust based on your layout */
+        flex: 1;        /* grow to fill remaining left-column space */
+        min-height: 0;  /* allow shrinking when lg-decode-panel is visible */
       }
 
       .verification h3 {
@@ -345,7 +350,8 @@
         text-align: center;
         display: flex;
         flex-direction: column;
-        height: 100%;
+        min-height: 0;   /* allow flex shrink */
+        min-width: 220px;
       }
 
       .right-section .info-box {
@@ -386,14 +392,14 @@
         color: black;
         font-size: 42px;
         font-weight: bold;
-        padding: 30px 0;
+        padding: 20px 0;
         margin-top: 10px;
         border-radius: 8px;
         flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 150px; /* Ensure minimum height */
+        min-height: 80px;
       }
 
       /* Intermediate sequential pass (yellow) */
@@ -402,14 +408,14 @@
         color: #000;
         font-size: 42px;
         font-weight: bold;
-        padding: 30px 0;
+        padding: 20px 0;
         margin-top: 10px;
         border-radius: 8px;
         flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 150px;
+        min-height: 80px;
       }
 
       .failed {
@@ -417,29 +423,29 @@
         color: white;
         font-size: 42px;
         font-weight: bold;
-        padding: 30px 0;
+        padding: 20px 0;
         margin-top: 10px;
         border-radius: 8px;
         flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 150px; /* Ensure minimum height */
+        min-height: 80px;
       }
 
-      #pass-status:not(.pass-box):not(.failed) {
+      #pass-status:not(.pass-box):not(.failed):not(.interim-pass) {
         background-color: #1f4e79;
         color: white;
         font-size: 36px;
         font-weight: bold;
-        padding: 30px 0;
+        padding: 20px 0;
         margin-top: 10px;
         border-radius: 8px;
         flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 150px; /* Ensure minimum height */
+        min-height: 80px;
       }
 
       @media (max-width: 768px) {
@@ -2557,6 +2563,13 @@
             logToSave["scan-by"] = logEntry.scannerInfo || "";
           }
 
+          // LG-specific columns — write directly when present on logEntry
+          const lgCols = ["Part Code","LG Barcode","Nation","Supplier","Mfg Date","LG Serial"];
+          lgCols.forEach((col) => {
+            if (logEntry && logEntry[col] !== undefined)
+              logToSave[col] = logEntry[col];
+          });
+
           // Add legacy/common columns (prefer explicit keys on logEntry if present)
           // Save under new headers: Generated code 1 and Generated code 2 (duplicate)
           const genVal =
@@ -2669,6 +2682,11 @@
             } catch (e) {
               logToSave[header] = "";
             }
+          });
+
+          // LG-specific columns — write directly when present on logEntry
+          ["Part Code","LG Barcode","Nation","Supplier","Mfg Date","LG Serial"].forEach((col) => {
+            if (logEntry && logEntry[col] !== undefined) logToSave[col] = logEntry[col];
           });
 
           // Add scan-by value as an explicit column (preserve the key as-is)
@@ -2867,186 +2885,143 @@
             return;
           }
 
-          // If this looks like an LG barcode, prefer LG-specific flow
-          if (
-            window.LGBarcodeLogic &&
-            typeof window.LGBarcodeLogic.isLGFormat === "function" &&
-            window.LGBarcodeLogic.isLGFormat(cleanedCode)
-          ) {
+          // ── LG Barcode Flow ──────────────────────────────────────────────────────
+          // When LGBarcodeLogic module is loaded, ALL scans are handled here.
+          // Non-LG format → error; valid LG → PASS; duplicate serial → error.
+          // Panel stays on screen until the next scan (no auto-reset timer).
+          if (window.LGBarcodeLogic && typeof window.LGBarcodeLogic.isLGFormat === "function") {
             try {
-              // Validate format
-              if (!window.LGBarcodeLogic.isLGFormat(cleanedCode)) {
-                window.LGBarcodeLogic.showError("Invalid barcode format");
-                try {
-                  const passEl = document.getElementById("pass-status");
-                  if (passEl) {
-                    passEl.textContent = "FAILED";
-                    passEl.classList.add("failed");
-                  }
-                } catch (e) {}
-                return;
-              }
-              const decoded = window.LGBarcodeLogic.decode(cleanedCode);
-              if (!decoded) {
-                window.LGBarcodeLogic.showError("Failed to decode LG barcode");
-                return;
-              }
-              // Duplicate serial check
-              if (!window.LGBarcodeLogic.isSerialUnique(decoded.serial)) {
-                window.LGBarcodeLogic.showError(
-                  "Duplicate serial " +
-                    decoded.serial +
-                    " — already scanned today.",
-                );
-                try {
-                  const passEl = document.getElementById("pass-status");
-                  if (passEl) {
-                    passEl.textContent = "FAILED";
-                    passEl.classList.add("failed");
-                  }
-                } catch (e) {}
-                return;
-              }
-
-              // PASS: show panel and update UI
-              try {
-                window.LGBarcodeLogic.showPanel(decoded);
-              } catch (e) {}
-              try {
-                document.getElementById("scan-data-value").textContent =
-                  cleanedCode;
-              } catch (e) {}
-              try {
-                const ssv = document.getElementById("scan-status-value");
-                if (ssv) {
-                  ssv.textContent = "OK";
-                  ssv.classList.remove("failed");
-                  ssv.classList.add("ok");
-                }
-              } catch (e) {}
-              try {
+              // ── FAIL helper ─────────────────────────────────────────────────
+              const _lgFail = async (msg, scannedVal, failDecoded) => {
+                // Update breakdown panel
+                window.LGBarcodeLogic.showError(msg);
+                // pass-status → red FAILED
                 const passEl = document.getElementById("pass-status");
                 if (passEl) {
-                  passEl.textContent = "All Passed";
-                  passEl.classList.remove("failed");
-                  passEl.classList.add("pass-box");
-                  passEl.style.background =
-                    "linear-gradient(90deg,#00c853,#66bb6a)";
-                  passEl.style.color = "#022";
+                  passEl.textContent = "FAILED";
+                  passEl.classList.remove("pass-box");
+                  passEl.classList.add("failed");
+                  passEl.style.background = "";
+                  passEl.style.color = "";
                 }
-              } catch (e) {}
-              try {
-                const qty = document.getElementById("scan-qty");
-                if (qty)
-                  qty.value = String(Number(qty.value) + 1).padStart(5, "0");
-              } catch (e) {}
+                // scan-data-value → show what was scanned
+                const sdv = document.getElementById("scan-data-value");
+                if (sdv) sdv.textContent = scannedVal || "";
+                // scan-status-value → NOT OK
+                const ssv = document.getElementById("scan-status-value");
+                if (ssv) { ssv.textContent = "NOT OK"; ssv.classList.remove("ok"); }
+                // error sound
+                try { const snd = document.getElementById("error-sound"); if (snd) { snd.currentTime = 0; snd.play(); } } catch (e) {}
+                // save to error log
+                if (typeof window.saveErrorScanLogRealtime === "function") {
+                  try {
+                    const errEntry = {
+                      timestamp: new Date(),
+                      scannedCode: scannedVal,
+                      scannerInfo: (document.getElementById("scan-by") || {}).value || "",
+                      "Scanned Code": scannedVal,
+                      "Status": "FAIL",
+                      "LG Barcode": scannedVal,
+                      "Barcode Breakdown": msg,
+                    };
+                    if (failDecoded) {
+                      errEntry["Part Code"] = failDecoded.partNo || "";
+                      errEntry["LG Barcode"] = failDecoded.raw || scannedVal;
+                      errEntry["Nation"]    = failDecoded.nation || "";
+                      errEntry["Supplier"]  = failDecoded.supplier || "";
+                      errEntry["Mfg Date"]  = failDecoded.dateDisplay || "";
+                      errEntry["LG Serial"] = failDecoded.serial || "";
+                    }
+                    await window.saveErrorScanLogRealtime(errEntry);
+                  } catch (e) { console.error("[LG] error save failed:", e); }
+                }
+              };
 
-              // register serial and save
-              try {
-                window.LGBarcodeLogic.registerSerial(decoded.serial);
-              } catch (e) {}
+              // ── Step 1: validate LG format ──────────────────────────────────
+              if (!window.LGBarcodeLogic.isLGFormat(cleanedCode)) {
+                await _lgFail("Invalid LG barcode format — expected 21-char LG code", cleanedCode, null);
+                return;
+              }
+
+              // ── Step 2: decode ──────────────────────────────────────────────
+              const decoded = window.LGBarcodeLogic.decode(cleanedCode);
+              if (!decoded) {
+                await _lgFail("Failed to decode barcode", cleanedCode, null);
+                return;
+              }
+
+              // ── Step 3: duplicate serial check ──────────────────────────────
+              if (!window.LGBarcodeLogic.isSerialUnique(decoded.serial)) {
+                await _lgFail(
+                  "Duplicate serial #" + decoded.serial + " — already scanned today",
+                  cleanedCode, decoded
+                );
+                return;
+              }
+
+              // ── PASS ────────────────────────────────────────────────────────
+              // Show colour-coded breakdown panel (stays until next scan)
+              window.LGBarcodeLogic.showPanel(decoded);
+
+              // scan-data-value → raw barcode
+              const sdvPass = document.getElementById("scan-data-value");
+              if (sdvPass) sdvPass.textContent = cleanedCode;
+
+              // scan-status-value → OK (green)
+              const ssvPass = document.getElementById("scan-status-value");
+              if (ssvPass) { ssvPass.textContent = "OK"; ssvPass.classList.remove("failed"); ssvPass.classList.add("ok"); }
+
+              // pass-status → All Passed (green gradient, stays until next scan)
+              const passElPass = document.getElementById("pass-status");
+              if (passElPass) {
+                passElPass.textContent = "All Passed";
+                passElPass.classList.remove("failed");
+                passElPass.classList.add("pass-box");
+                passElPass.style.background = "linear-gradient(90deg,#00c853,#66bb6a)";
+                passElPass.style.color = "#022";
+              }
+
+              // scan-qty counter
+              const qty = document.getElementById("scan-qty");
+              if (qty) qty.value = String(Number(qty.value) + 1).padStart(5, "0");
+
+              // Register serial (dedup guard)
+              window.LGBarcodeLogic.registerSerial(decoded.serial);
+
+              // Save to history Excel
               if (typeof window.saveScanLogRealtime === "function") {
                 try {
                   const logEntry = { timestamp: new Date() };
-                  ((window.settings && window.settings.fields) || []).forEach(
-                    function (f) {
-                      logEntry[f.header || f.label || f.id] = "";
-                    },
-                  );
-                  logEntry["Part Code"] = decoded.partNo;
+                  // Zero-fill any configured settings fields
+                  ((window.settings && window.settings.fields) || []).forEach((f) => {
+                    logEntry[f.header || f.label || f.id] = "";
+                  });
+                  // LG-specific columns
+                  logEntry["Part Code"]  = decoded.partNo;
                   logEntry["LG Barcode"] = decoded.raw;
-                  logEntry["Nation"] = decoded.nation;
-                  logEntry["Supplier"] = decoded.supplier;
-                  logEntry["Mfg Date"] = decoded.dateDisplay;
-                  logEntry["LG Serial"] = decoded.serial;
-                  logEntry["Status"] = "PASS";
+                  logEntry["Nation"]     = decoded.nation;
+                  logEntry["Supplier"]   = decoded.supplier;
+                  logEntry["Mfg Date"]   = decoded.dateDisplay;
+                  logEntry["LG Serial"]  = decoded.serial;
+                  logEntry["Status"]     = "PASS";
+                  // Standard fields so Generated code 1/2, Scanner, Scanned Code columns fill correctly
+                  logEntry.scannedCode  = decoded.raw;
+                  logEntry.scannerInfo  = (document.getElementById("scan-by") || {}).value || "";
+                  logEntry.breakdownFields = [
+                    { label: "Part Code",  value: decoded.partNo },
+                    { label: "LG Barcode", value: decoded.raw },
+                    { label: "Nation",     value: decoded.nation },
+                    { label: "Supplier",   value: decoded.supplier },
+                    { label: "Mfg Date",   value: decoded.dateDisplay },
+                    { label: "LG Serial",  value: decoded.serial },
+                  ];
                   await window.saveScanLogRealtime(logEntry);
-                } catch (e) {
-                  console.error("[LGBarcodeLogic] save failed:", e);
-                }
+                } catch (e) { console.error("[LG] save failed:", e); }
               }
 
-              // render human-readable breakdown
-              try {
-                const breakdownFields = [
-                  {
-                    id: "part_no",
-                    label: "Part Code",
-                    header: "Part Code",
-                    value: decoded.partNo,
-                  },
-                  {
-                    id: "lg_barcode",
-                    label: "LG Barcode",
-                    header: "LG Barcode",
-                    value: decoded.raw,
-                  },
-                  {
-                    id: "nation",
-                    label: "Nation",
-                    header: "Nation",
-                    value: decoded.nation,
-                  },
-                  {
-                    id: "supplier",
-                    label: "Supplier",
-                    header: "Supplier",
-                    value: decoded.supplier,
-                  },
-                  {
-                    id: "mfg_date",
-                    label: "Mfg Date",
-                    header: "Mfg Date",
-                    value: decoded.dateDisplay,
-                  },
-                  {
-                    id: "lg_serial",
-                    label: "LG Serial",
-                    header: "LG Serial",
-                    value: decoded.serial,
-                  },
-                ];
-                if (typeof window.renderScanBreakdown === "function") {
-                  window.renderScanBreakdown({
-                    status: "MATCHED",
-                    scannedCode: cleanedCode,
-                    scannerInfo:
-                      (document.getElementById("scan-by") || {}).value || "",
-                    timestamp: new Date(),
-                    fields: breakdownFields,
-                  });
-                  try {
-                    if (typeof window.renderLGFields === "function")
-                      window.renderLGFields({ fields: breakdownFields });
-                  } catch (e) {}
-                }
-              } catch (e) {}
-
-              // Auto-reset after 1.5s
-              setTimeout(() => {
-                try {
-                  if (
-                    window.scanManager &&
-                    typeof window.scanManager._showReadyState === "function"
-                  )
-                    window.scanManager._showReadyState();
-                  else {
-                    const passEl = document.getElementById("pass-status");
-                    if (passEl) {
-                      passEl.textContent = "READY";
-                      passEl.classList.remove("pass-box");
-                      passEl.style.background = "";
-                      passEl.style.color = "";
-                    }
-                  }
-                  const sdv = document.getElementById("scan-data-value");
-                  if (sdv) sdv.textContent = "";
-                } catch (e) {}
-              }, 1500);
-
-              return;
+              return; // LG flow complete — do not fall through to standard scan
             } catch (e) {
-              console.error("LG scan flow error", e);
+              console.error("[LG] scan flow error:", e);
             }
           }
 
@@ -6126,12 +6101,16 @@
               );
               columns = columns.concat(filtered);
             }
-            // Always include common trailing columns (deduped below)
+            // Always include LG-specific and common trailing columns (deduped below)
             columns = columns.concat([
+              "LG Barcode",
+              "Part Code",
+              "Nation",
+              "Supplier",
+              "Mfg Date",
+              "LG Serial",
               "scan-by",
-              "Generated code 1",
-              "Generated code 2",
-              "Scanner",
+              "Scanned Code",
               "Status",
             ]);
             // Deduplicate while preserving order
@@ -6148,8 +6127,8 @@
 
             const rowsHtml = todaysLogs
               .map((log) => {
-                const cls =
-                  log.matchStatus === "MATCHED" ? "match" : "no-match";
+                const statusVal = (log.raw && log.raw["Status"]) || log.matchStatus || "";
+                const cls = (statusVal === "MATCHED" || statusVal === "PASS") ? "match" : "no-match";
                 const raw = log.raw || {};
                 const cells = columns
                   .map((col) => {
@@ -6306,143 +6285,8 @@
           }
         }
 
-        // ── LG Barcode Handler ───────────────────────────────────────────────
-        // Single scan: LG barcode → decode → serial check → PASS → save → reset
-        // Wrong scan (invalid format / duplicate serial) → error → stop
-        {
-          const _lgBase = handleScan;
-          handleScan = async function (scannedCode) {
-            if (!window.LGBarcodeLogic) {
-              await _lgBase(scannedCode);
-              return;
-            }
-
-            // ── Helper: show FAIL UI ─────────────────────────────────────────
-            function lgFail(msg) {
-              window.LGBarcodeLogic.showError(msg);
-              try {
-                const snd = document.getElementById("error-sound");
-                if (snd) {
-                  snd.currentTime = 0;
-                  snd.play();
-                  setTimeout(function () {
-                    snd.pause();
-                  }, 1200);
-                }
-              } catch (e) {}
-              try {
-                const passEl = document.getElementById("pass-status");
-                if (passEl) {
-                  passEl.textContent = "FAILED";
-                  passEl.classList.add("failed");
-                  passEl.style.background = "";
-                  passEl.style.color = "";
-                }
-              } catch (e) {}
-            }
-
-            // ── FAIL: not a valid LG barcode ─────────────────────────────────
-            if (!window.LGBarcodeLogic.isLGFormat(scannedCode)) {
-              lgFail(
-                "Invalid barcode. Expected LG format (e.g. EAD63827619IGA63P0001).",
-              );
-              return;
-            }
-
-            const decoded = window.LGBarcodeLogic.decode(scannedCode);
-
-            // ── FAIL: duplicate serial for today ─────────────────────────────
-            if (!window.LGBarcodeLogic.isSerialUnique(decoded.serial)) {
-              lgFail(
-                "Duplicate serial <strong>" +
-                  decoded.serial +
-                  "</strong> — already scanned today.<br>" +
-                  "Each serial is unique per day.",
-              );
-              return;
-            }
-
-            // ── PASS ─────────────────────────────────────────────────────────
-            window.LGBarcodeLogic.showPanel(decoded);
-
-            try {
-              document.getElementById("scan-data-value").textContent =
-                scannedCode;
-            } catch (e) {}
-            try {
-              const ssv = document.getElementById("scan-status-value");
-              if (ssv) {
-                ssv.textContent = "OK";
-                ssv.classList.remove("failed");
-                ssv.classList.add("ok");
-              }
-            } catch (e) {}
-            try {
-              const passEl = document.getElementById("pass-status");
-              if (passEl) {
-                passEl.textContent = "All Passed";
-                passEl.classList.remove("failed");
-                passEl.style.background =
-                  "linear-gradient(90deg,#00c853,#66bb6a)";
-                passEl.style.color = "#022";
-              }
-            } catch (e) {}
-            try {
-              const qty = document.getElementById("scan-qty");
-              if (qty)
-                qty.value = String(Number(qty.value) + 1).padStart(5, "0");
-            } catch (e) {}
-
-            // Register serial as used today
-            window.LGBarcodeLogic.registerSerial(decoded.serial);
-
-            // Save to history
-            if (typeof window.saveScanLogRealtime === "function") {
-              try {
-                const logEntry = { timestamp: new Date() };
-                // Populate standard field headers so history columns are consistent
-                ((window.settings && window.settings.fields) || []).forEach(
-                  function (f) {
-                    logEntry[f.header || f.label || f.id] = "";
-                  },
-                );
-                // LG decoded fields
-                logEntry["Part Code"] = decoded.partNo;
-                logEntry["LG Barcode"] = decoded.raw;
-                logEntry["Nation"] = decoded.nation;
-                logEntry["Supplier"] = decoded.supplier;
-                logEntry["Mfg Date"] = decoded.dateDisplay;
-                logEntry["LG Serial"] = decoded.serial;
-                logEntry["Status"] = "PASS";
-                await window.saveScanLogRealtime(logEntry);
-              } catch (e) {
-                console.error("[LGBarcodeLogic] save failed:", e);
-              }
-            }
-
-            // Auto-reset to READY after 1.5 s — ready for next scan
-            setTimeout(function () {
-              try {
-                if (
-                  window.scanManager &&
-                  typeof window.scanManager._showReadyState === "function"
-                ) {
-                  window.scanManager._showReadyState();
-                } else {
-                  const passEl = document.getElementById("pass-status");
-                  if (passEl) {
-                    passEl.textContent = "READY";
-                    passEl.style.background = "";
-                    passEl.style.color = "";
-                  }
-                }
-                const sdv = document.getElementById("scan-data-value");
-                if (sdv) sdv.textContent = "";
-              } catch (e) {}
-            }, 1500);
-          };
-        }
-        // ── End LG Barcode Handler ───────────────────────────────────────────
+        // LG Barcode Handler is now fully contained inside handleScan() above.
+        // (Old wrapper removed — the inline handler handles all cases correctly.)
 
         // On initial load, clear part code, part name, customer, scan by and mark required fields red
         function clearInitialFields() {
@@ -6575,6 +6419,9 @@
             />
           </div>
 
+          <!-- LG barcode decode panel — static, always in layout, blank on startup -->
+          <div id="lg-decode-panel" class="lg-panel-blank"></div>
+
           <div id="verification-section" class="verification">
             <h3 id="verification-title">Verification Status</h3>
 
@@ -6628,6 +6475,7 @@
               display: flex;
               flex-direction: column;
               margin-top: 10px;
+              min-height: 0;
             "
           >
             <div id="pass-status">READY</div>
@@ -7061,32 +6909,30 @@
 
     <!-- ── LG Barcode Decoded Info Panel ──────────────────────────────────── -->
     <!-- Shown by lg-barcode-logic.js whenever a valid LG barcode is scanned. -->
-    <div id="lg-decode-panel" style="display: none" class="lg-panel-ok"></div>
-
     <style>
-      /* ── LG panel base — right side, vertically centred ───────────────── */
+      /* ── LG panel base — static, inline below scan fields ─────────────── */
       #lg-decode-panel {
-        position: fixed;
-        top: 50%;
-        right: 18px;
-        transform: translateY(-50%);
-        z-index: 200000;
-        width: 440px;
-        border-radius: 12px;
-        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+        width: 100%;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         font-family: "Segoe UI", Arial, sans-serif;
         font-size: 13px;
         overflow: hidden;
+        margin-top: 10px;
+        margin-bottom: 10px;
         animation: lgSlideIn 0.25s ease;
+      }
+      #lg-decode-panel.lg-panel-blank {
+        display: none;
       }
       @keyframes lgSlideIn {
         from {
           opacity: 0;
-          transform: translateY(calc(-50% + 20px));
+          transform: translateY(10px);
         }
         to {
           opacity: 1;
-          transform: translateY(-50%);
+          transform: translateY(0);
         }
       }
       #lg-decode-panel.lg-panel-ok {
