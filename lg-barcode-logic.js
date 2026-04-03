@@ -49,7 +49,10 @@
   let _trackedDate = _todayStr();
 
   function _todayStr() {
-    return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const d = new Date();
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0'); // local YYYY-MM-DD
   }
 
   function _rolloverCheck() {

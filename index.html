@@ -2418,14 +2418,22 @@
         }
       }
 
+      // Local date helper — avoids UTC/local mismatch that creates differently-named files across restarts
+      function _localDateStr() {
+        const d = new Date();
+        return d.getFullYear() + '-' +
+          String(d.getMonth() + 1).padStart(2, '0') + '-' +
+          String(d.getDate()).padStart(2, '0');
+      }
+
       // Flag to prevent multiple simultaneous saves
       let isSaving = false;
-      let currentLogDate = new Date().toISOString().split("T")[0]; // Track current log date
+      let currentLogDate = _localDateStr(); // Track current log date (local date)
 
       // Function to load scan logs from today's date file
       async function loadTodaysScanLogs() {
         try {
-          const today = new Date().toISOString().split("T")[0];
+          const today = _localDateStr();
           console.log("Loading scan logs for date:", today);
 
           // Call backend to read today's scan logs
@@ -2517,7 +2525,7 @@
 
         try {
           // Check if date has changed (new day started)
-          const today = new Date().toISOString().split("T")[0];
+          const today = _localDateStr();
           if (today !== currentLogDate) {
             console.log("Date changed from", currentLogDate, "to", today);
             currentLogDate = today;
@@ -2640,7 +2648,7 @@
         isSaving = true;
 
         try {
-          const today = new Date().toISOString().split("T")[0];
+          const today = _localDateStr();
           if (today !== currentLogDate) {
             currentLogDate = today;
           }
@@ -6211,6 +6219,17 @@
         window.addEventListener("load", async () => {
           await loadMasterData();
           updateTimestamp();
+          // Restore today's scan count from history so qty doesn't reset on restart
+          try {
+            const todayLogs = await loadTodaysScanLogs();
+            const passCount = todayLogs.filter(l => {
+              const s = (l.raw && l.raw["Status"]) || l.matchStatus || "";
+              return s === "PASS" || s === "MATCHED";
+            }).length;
+            const qtyEl = document.getElementById("scan-qty");
+            if (qtyEl && passCount > 0)
+              qtyEl.value = String(passCount).padStart(5, "0");
+          } catch (e) {}
         });
 
         // New code to enforce initial blank and red highlight on required fields and show popup on scan or click if no part selected

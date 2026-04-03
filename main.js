@@ -294,7 +294,8 @@ ipcMain.handle('read-master-data', async () => {
 
 // Handle writing logs (for manual export)
 ipcMain.handle('write-logs', async (event, data) => {
-  const today = new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const today = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   // Use the same history-<date>.xlsx filename pattern as real-time saves
   const logFilePath = path.join(rootPath, `history-${today}.xlsx`);
   try {
